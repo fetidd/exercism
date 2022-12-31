@@ -16,7 +16,7 @@ pub fn winning_hands<'a>(hands: &[&'a str]) -> Vec<&'a str> {
         let b_hand = Hand::from_str(b);
         a_hand.partial_cmp(&b_hand).unwrap()
     });
-    let mut idx = 1;
+    let mut idx = 0;
     println!("{hands:?}");
     while Hand::from_str(hands[0]).partial_cmp(&Hand::from_str(hands[idx])).unwrap() == Ordering::Equal {
         idx += 1;
@@ -24,13 +24,14 @@ pub fn winning_hands<'a>(hands: &[&'a str]) -> Vec<&'a str> {
             break;
         }
     }
+    println!("{hands:?}");
     hands[0..idx].to_vec()
 }
 
 
 #[derive(Clone, Copy, Debug, Eq)]
 struct Card {
-    rank: u8,
+    rank: i8,
     suit: char
 }
 
@@ -49,12 +50,21 @@ impl Hash for Card {
 impl Card {
     fn new(s: &str) -> Self {
         let (rank, suit) = s.split_at(s.len()-1);
-        let rank = ["A","2","3","4","5","6","7","8","9","10","J","Q","K"]
+        let rank = ["2","3","4","5","6","7","8","9","10","J","Q","K","A"]
             .iter()
             .position(|r| *r == rank)
-            .unwrap() as u8; // should never fail in any of the tests, so fuck it :D
+            .unwrap() as i8; // should never fail in any of the tests, so fuck it :D
         let suit = char::from_str(suit).unwrap();
         Card {rank, suit}
+    }
+
+    fn make_low(&mut self) -> Result<(), String> {
+        if self.rank == 12 {
+            self.rank = -1;
+            Ok(())
+        } else {
+            Err("not an ace".into())
+        }
     }
 }
 
@@ -62,7 +72,7 @@ impl Card {
 fn test_new_card() {
     let card_str = "QH";
     let card = Card::new(card_str);
-    assert_eq!(card, Card {rank: 11u8, suit: 'H'});
+    assert_eq!(card, Card {rank: 10, suit: 'H'});
     assert_eq!(card.suit, 'H');
 }
 
@@ -95,10 +105,14 @@ impl FromStr for Hand {
             let suit = cards[0].suit;
             cards[1..].iter().all(|c| c.suit == suit)
         };
-        if is_flush && cards[0].rank == 0u8 && cards[1].rank == 9u8 && is_straight(&cards[1..]) { return Ok(Self::RoyalFlush);}
         if is_flush && is_straight(&cards) {
-            cards.reverse();
-            return Ok(Hand::StraightFlush{cards});
+            if cards[0].rank == 8 {
+                cards.reverse();
+                return Ok(Hand::RoyalFlush)
+            } else {
+                cards.reverse();
+                return Ok(Hand::StraightFlush{cards});
+            }
         }
         match find_groups(&cards, 4) {
             Some(c) => {
@@ -162,9 +176,9 @@ fn test_from_str() {
     let fh = "2H 2D 2S 3D 3H";
     assert_eq!(Hand::from_str(fh), Ok(Hand::FullHouse{three_card: Card::new("2H"), pair_card: Card::new("3D")}), "failed to create full house");
     let flush = "7D 8D 3D KD AD";
-    assert_eq!(Hand::from_str(flush), Ok(Hand::Flush{cards: vec![Card::new("KD"), Card::new("8D"), Card::new("7D"), Card::new("3D"), Card::new("AD")]}), "failed to create flush");
-    let straight = "2H 3D 4S 5H 6S";
-    assert_eq!(Hand::from_str(straight), Ok(Hand::Straight{cards: vec![Card::new("6S"), Card::new("5H"), Card::new("4S"), Card::new("3D"), Card::new("2H")]}), "failed to create straight");
+    assert_eq!(Hand::from_str(flush), Ok(Hand::Flush{cards: vec![Card::new("AD"), Card::new("KD"), Card::new("8D"), Card::new("7D"), Card::new("3D")]}), "failed to create flush");
+    let straight = "AS 2H 3D 4S 5H";
+    assert_eq!(Hand::from_str(straight), Ok(Hand::Straight{cards: vec![Card::new("AS"), Card::new("5H"), Card::new("4S"), Card::new("3D"), Card::new("2H")]}), "failed to create straight");
     let three = "7H 7D 7S 2H 3D";
     assert_eq!(Hand::from_str(three), Ok(Hand::ThreeOfAKind { three_card: Card::new("7H"), kickers: vec![Card::new("3D"), Card::new("2H")] }), "failed to create three of a kind");
     let two = "7H 7D 5S 5H 3D";
@@ -177,38 +191,33 @@ fn test_from_str() {
 
 fn is_straight(cards: &[Card]) -> bool {
     let mut cards = cards.to_vec();
-    let mut first = cards[0].rank;
-    if first == 0 && cards[1].rank == 9 { // A 10 J Q K -> 10 J Q K A
-        cards.remove(0);
-        first = cards[0].rank;
-    }
     cards.iter().enumerate().all(|(i, c)| {
-        c.rank == (i as u8) + first
+        c.rank == (i as i8) + cards[0].rank
     })
 }
 
 #[test]
 fn test_is_straight() {
     let cards = vec![
-        Card{rank: 5u8, suit: 'H'},
-        Card{rank: 6u8, suit: 'H'},
-        Card{rank: 7u8, suit: 'H'},
-        Card{rank: 8u8, suit: 'H'},
-        Card{rank: 9u8, suit: 'H'},
+        Card{rank: 5, suit: 'H'},
+        Card{rank: 6, suit: 'H'},
+        Card{rank: 7, suit: 'H'},
+        Card{rank: 8, suit: 'H'},
+        Card{rank: 9, suit: 'H'},
     ];
     let cards2 = vec![
-        Card{rank: 5u8, suit: 'H'},
-        Card{rank: 7u8, suit: 'H'},
-        Card{rank: 7u8, suit: 'H'},
-        Card{rank: 8u8, suit: 'H'},
-        Card{rank: 9u8, suit: 'H'},
+        Card{rank: 5, suit: 'H'},
+        Card{rank: 7, suit: 'H'},
+        Card{rank: 7, suit: 'H'},
+        Card{rank: 8, suit: 'H'},
+        Card{rank: 9, suit: 'H'},
     ];
     let cards3 = vec![
-        Card::new("AC"),
         Card::new("10D"),
         Card::new("JH"),
         Card::new("QS"),
         Card::new("KD"),
+        Card::new("AC"),
     ];
     assert!(is_straight(&cards));
     assert!(is_straight(&cards3));
@@ -233,14 +242,14 @@ fn find_groups(cards: &[Card], group_size: i32) -> Option<Vec<Card>> {
 #[test]
 fn test_find_groups() {
     let cards = vec![
-        Card{rank: 5u8, suit: 'H'},
-        Card{rank: 5u8, suit: 'D'},
-        Card{rank: 8u8, suit: 'D'},
-        Card{rank: 8u8, suit: 'H'},
-        Card{rank: 8u8, suit: 'S'},
+        Card{rank: 5, suit: 'H'},
+        Card{rank: 5, suit: 'D'},
+        Card{rank: 8, suit: 'D'},
+        Card{rank: 8, suit: 'H'},
+        Card{rank: 8, suit: 'S'},
     ];
-    assert_eq!(find_groups(&cards, 2), Some(vec![Card{rank: 5u8, suit: 'D'}]));
-    assert_eq!(find_groups(&cards, 3), Some(vec![Card{rank: 8u8, suit: 'H'}]));
+    assert_eq!(find_groups(&cards, 2), Some(vec![Card{rank: 5, suit: 'D'}]));
+    assert_eq!(find_groups(&cards, 3), Some(vec![Card{rank: 8, suit: 'H'}]));
 }
 
 impl PartialOrd for Hand {
